@@ -30,7 +30,7 @@ async function sendToWordPress(summary) {
       console.log("GROQ summarization failed.\n");
       continue;
     }
-    sendToWordPress(summary);
+    await sendToWordPress(summary);
     console.log(`Summary for ${company}:`);
     console.log(summary);
     console.log("\n---\n");

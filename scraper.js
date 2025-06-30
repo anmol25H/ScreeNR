@@ -36,7 +36,10 @@ async function getTodayConcallLinks() {
 
         const company =
           row.querySelector(".ink-900")?.textContent.trim() || "Unknown";
-        const pdfLink = row.querySelector("th a")?.getAttribute("href") || null;
+        const pdfLink =
+          Array.from(row.querySelectorAll("td a"))
+            .map((a) => a.href)
+            .find((href) => href.endsWith(".pdf")) || null;
 
         return { company, date, pdfUrl: pdfLink };
       })

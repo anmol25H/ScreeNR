@@ -1,34 +1,44 @@
 const axios = require("axios");
+const { jsonrepair } = require("jsonrepair");
 require("dotenv").config();
 
 const GROQ_API = "https://api.groq.com/openai/v1/chat/completions";
 
 async function summarizeConcall(company, pdfText) {
   const prompt = `
-You're a financial AI assistant.
+You are a top-tier equity research analyst with access to a full earnings transcript or presentation.
 
-Read this earnings call transcript and return **only this JSON**, nothing else (no introductions, no markdown, no extra lines):
+TASK:
+- Extract all financial KPIs (revenue, profit, dates, forward-looking guidance).
+- If values for two periods are available, calculate Year-on-Year (YoY) growth % using ((Current - Previous) / Previous) * 100.
+- Always think through the data — infer when needed, and estimate if not clearly labeled.
+- If any required field (like RevenueGrowthPercent or ProfitGrowthPercent) is not available in the document, return the string "Not mentioned". Do not return null or leave fields empty.
+- NEVER return markdown, commentary, or notes — ONLY a valid JSON object.
 
+OUTPUT FORMAT:
 {
-  "NSEsymbol": "string or null",
-  "RevenueGrowthPercent": "string",
-  "ProfitGrowthPercent": "string",
-  "EarningsReportDate": "string",
-  "FutureOpportunities": ["point 1", "point 2", "point 3", "point 4", "point 5"],
-  "RisksAndDegrowth": ["point 1", "point 2", "point 3", "point 4", "point 5"]
+  "NSEsymbol": "e.g. TCS, RELIANCE (all caps)",
+  "RevenueGrowthPercent": "e.g. 12.4%",
+  "ProfitGrowthPercent": "e.g. 18.2%",
+  "EarningsReportDate": "e.g. 30 Jun 2025",
+  "FutureOpportunities": ["...", "...", "...", "...", "..."],
+  "RisksAndDegrowth": ["...", "...", "...", "...", "..."]
 }
 
-Be concise but informative. Always provide 5 bullet points, even if you need to generalize.
+Important:
+- Always return **exactly 5** points in both opportunity and risk lists.
+- Use generalizations like "market expansion" if specifics are unavailable.
+- Derive NSE symbol from company name if not explicitly present.
 
-Transcript:
-${pdfText.slice(0, 4000)}
+INPUT DOCUMENT (first 6000 chars):
+${pdfText.slice(0, 6000)}
 `;
 
   try {
     const res = await axios.post(
       GROQ_API,
       {
-        model: "llama3-8b-8192",
+        model: "llama3-70b-8192",
         messages: [{ role: "user", content: prompt }],
         temperature: 0.2,
       },
@@ -42,13 +52,15 @@ ${pdfText.slice(0, 4000)}
 
     const content = res.data.choices[0]?.message?.content || "";
 
+    const start = content.indexOf("{");
+    const end = content.lastIndexOf("}");
+    const jsonString = content.substring(start, end + 1);
+
     try {
-      const start = content.indexOf("{");
-      const end = content.lastIndexOf("}");
-      const jsonString = content.substring(start, end + 1);
-      return JSON.parse(jsonString);
+      const repaired = jsonrepair(jsonString);
+      return JSON.parse(repaired);
     } catch (err) {
-      console.error("GROQ returned wrong JSON:\n", content);
+      console.error("JSON Repair failed:\n", jsonString);
       return null;
     }
   } catch (err) {
