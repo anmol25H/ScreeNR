@@ -2,7 +2,7 @@ name: Screener Earnings Scraper
 
 on:
   schedule:
-    - cron: "30 17 * * *" # ⏰ Runs daily at 11:00 PM IST (17:30 UTC)
+    - cron: "30 17 * * *"
   workflow_dispatch:
 
 jobs:
@@ -11,10 +11,10 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: 20
 
