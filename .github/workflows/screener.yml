@@ -1,0 +1,29 @@
+name: Screener Earnings Scraper
+
+on:
+  schedule:
+    - cron: "30 17 * * *" # ⏰ Runs daily at 11:00 PM IST (17:30 UTC)
+  workflow_dispatch:
+
+jobs:
+  run-screener-scraper:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 20
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Run Screener Scraper
+        env:
+          GMAIL_USERNAME: ${{ secrets.GMAIL_USERNAME }}
+          GMAIL_PASS: ${{ secrets.GMAIL_PASS }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        run: node index.js
