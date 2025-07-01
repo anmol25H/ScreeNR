@@ -14,6 +14,7 @@ async function getTodayConcallLinks() {
   });
 
   const page = await browser.newPage();
+
   await page.goto("https://www.screener.in/login/", {
     waitUntil: "networkidle2",
   });
@@ -30,26 +31,32 @@ async function getTodayConcallLinks() {
     waitUntil: "networkidle2",
   });
 
-  const today = "30 June 2025";
+  const today = dayjs().tz("Asia/Kolkata").format("D MMMM YYYY");
+  console.log("Today (IST):", today);
 
   const data = await page.evaluate((today) => {
     const rows = Array.from(document.querySelectorAll("#result_list tbody tr"));
+
     return rows
       .map((row) => {
-        const date = row.querySelector(".field-pub_date")?.innerText.trim();
-        if (date !== today) return null;
-
-        const company =
-          row.querySelector(".ink-900")?.textContent.trim() || "Unknown";
-        const pdfLink =
-          Array.from(row.querySelectorAll("td a"))
+        const company = row.querySelector("th")?.innerText.trim();
+        const date = row.querySelector("td.field-pub_date")?.innerText.trim();
+        const pdfUrl =
+          Array.from(row.querySelectorAll("td.field-action_display a"))
             .map((a) => a.href)
             .find((href) => href.endsWith(".pdf")) || null;
 
-        return { company, date, pdfUrl: pdfLink };
+        if (!company || !date || date !== today || !pdfUrl) return null;
+
+        return { company, date, pdfUrl };
       })
       .filter(Boolean);
   }, today);
+
+  console.log(`Found ${data.length} concalls for ${today}`);
+  data.forEach(({ company, pdfUrl }) =>
+    console.log(`- ${company} → ${pdfUrl}`)
+  );
 
   await browser.close();
   return data;
