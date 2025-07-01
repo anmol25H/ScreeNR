@@ -10,7 +10,15 @@ require("dotenv").config();
 async function getTodayConcallLinks() {
   const browser = await puppeteer.launch({
     headless: "new",
-    args: ["--no-sandbox", "--disable-setuid-sandbox"],
+    args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+      "--disable-accelerated-2d-canvas",
+      "--no-first-run",
+      "--no-zygote",
+      "--disable-gpu",
+    ],
   });
 
   const page = await browser.newPage();
@@ -30,7 +38,7 @@ async function getTodayConcallLinks() {
   await page.goto("https://www.screener.in/concalls/", {
     waitUntil: "networkidle2",
   });
-  await page.waitForSelector(".field-pub_date", { timeout: 10000 });
+  await page.waitForSelector(".field-pub_date", { timeout: 30000 });
 
   const today = "1 July 2025";
   console.log("Today (IST):", today);
