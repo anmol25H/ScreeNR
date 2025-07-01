@@ -32,7 +32,7 @@ async function getTodayConcallLinks() {
   });
   await page.waitForSelector(".field-pub_date", { timeout: 10000 });
 
-  const today = dayjs().tz("Asia/Kolkata").format("D MMMM YYYY");
+  const today = "1 July 2025";
   console.log("Today (IST):", today);
 
   const data = await page.evaluate((today) => {
