@@ -31,7 +31,7 @@ jobs:
             libxrandr2 \
             libgbm1 \
             libxss1 \
-            libasound2
+            libasound2t64
 
       - name: Clean old node_modules and lockfile
         run: rm -rf node_modules package-lock.json
