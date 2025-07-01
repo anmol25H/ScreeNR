@@ -23,7 +23,10 @@ async function sendToWordPress(summary) {
     console.log(`Processing: ${company}`);
 
     const pdfText = await fetchPdfText(pdfUrl);
-    if (!pdfText) continue;
+    if (!pdfText) {
+      console.warn(`Skipped due to unreadable content: ${pdfUrl}`);
+      continue;
+    }
 
     const summary = await summarizeConcall(company, pdfText);
     if (!summary) {
