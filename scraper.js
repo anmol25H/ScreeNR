@@ -9,7 +9,7 @@ require("dotenv").config();
 
 async function getTodayConcallLinks() {
   const browser = await puppeteer.launch({
-    headless: true,
+    headless: "new",
     args: ["--no-sandbox", "--disable-setuid-sandbox"],
   });
 
@@ -30,6 +30,7 @@ async function getTodayConcallLinks() {
   await page.goto("https://www.screener.in/concalls/", {
     waitUntil: "networkidle2",
   });
+  await page.waitForSelector(".field-pub_date", { timeout: 10000 });
 
   const today = dayjs().tz("Asia/Kolkata").format("D MMMM YYYY");
   console.log("Today (IST):", today);
