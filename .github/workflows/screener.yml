@@ -18,6 +18,9 @@ jobs:
         with:
           node-version: 20
 
+      - name: Clean old node_modules and lockfile
+        run: rm -rf node_modules package-lock.json
+
       - name: Install Dependencies
         run: npm ci
 
