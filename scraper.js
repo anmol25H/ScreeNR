@@ -30,7 +30,7 @@ async function getTodayConcallLinks() {
     waitUntil: "networkidle2",
   });
 
-  const today = dayjs().tz("Asia/Kolkata").format("D MMMM YYYY");
+  const today = "30 June 2025";
 
   const data = await page.evaluate((today) => {
     const rows = Array.from(document.querySelectorAll("#result_list tbody tr"));
