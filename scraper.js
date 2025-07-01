@@ -1,5 +1,10 @@
 const puppeteer = require("puppeteer");
 const dayjs = require("dayjs");
+const utc = require("dayjs/plugin/utc");
+const timezone = require("dayjs/plugin/timezone");
+
+dayjs.extend(utc);
+dayjs.extend(timezone);
 require("dotenv").config();
 
 async function getTodayConcallLinks() {
@@ -25,7 +30,7 @@ async function getTodayConcallLinks() {
     waitUntil: "networkidle2",
   });
 
-  const today = dayjs().format("D MMMM YYYY");
+  const today = dayjs().tz("Asia/Kolkata").format("D MMMM YYYY");
 
   const data = await page.evaluate((today) => {
     const rows = Array.from(document.querySelectorAll("#result_list tbody tr"));

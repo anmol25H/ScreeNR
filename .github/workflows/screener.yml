@@ -2,7 +2,7 @@ name: Screener Earnings Scraper
 
 on:
   schedule:
-    - cron: "30 17 * * *"
+    - cron: "30 13 * * *"
   workflow_dispatch:
 
 jobs:
