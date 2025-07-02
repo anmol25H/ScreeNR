@@ -44,50 +44,118 @@ async function getTodayConcallLinks() {
     waitUntil: "networkidle2",
   });
 
+  // Debug: Take screenshot and log page content
+  console.log("Current URL:", page.url());
+
+  // Wait longer and try multiple strategies
+  await new Promise((resolve) => setTimeout(resolve, 5000)); // Give page time to load completely
+
+  // Check if we're actually on the concalls page
+  const pageTitle = await page.title();
+  console.log("Page title:", pageTitle);
+
   // More robust waiting strategy with multiple fallbacks
+  let tableLoaded = false;
   try {
     // First try to wait for the main table
     await page.waitForSelector("#result_list", { timeout: 20000 });
+    console.log("Found #result_list");
 
     // Then wait for table rows to load
     await page.waitForSelector("#result_list tbody tr", { timeout: 20000 });
+    console.log("Found table rows");
 
     // Finally wait for the specific field, but with a shorter timeout since table is loaded
     await page.waitForSelector(".field-pub_date", { timeout: 15000 });
+    console.log("Found .field-pub_date");
+    tableLoaded = true;
   } catch (error) {
     console.log("Primary selectors failed, trying alternative approach...");
+    console.log("Error:", error.message);
 
     // Fallback: wait for any table content and give it extra time
     try {
       await page.waitForSelector("table", { timeout: 10000 });
-      await page.waitForTimeout(3000); // Give extra time for dynamic content
+      await new Promise((resolve) => setTimeout(resolve, 5000)); // Give extra time for dynamic content
+      console.log("Found fallback table");
     } catch (fallbackError) {
       console.log("All selectors failed, proceeding with page as-is...");
+      console.log("Fallback error:", fallbackError.message);
     }
   }
+
+  // Debug: Log what's actually on the page
+  const pageContent = await page.evaluate(() => {
+    const resultList = document.querySelector("#result_list");
+    const tables = document.querySelectorAll("table");
+    const rows = document.querySelectorAll("tr");
+
+    return {
+      hasResultList: !!resultList,
+      tableCount: tables.length,
+      rowCount: rows.length,
+      bodyHTML: document.body.innerHTML.substring(0, 1000), // First 1000 chars
+    };
+  });
+
+  console.log("Page debug info:", JSON.stringify(pageContent, null, 2));
 
   const today = "1 July 2025";
   console.log("Today (IST):", today);
 
   const data = await page.evaluate((today) => {
-    const rows = Array.from(document.querySelectorAll("#result_list tbody tr"));
-
     // Debug: log what we actually found
-    console.log(`Found ${rows.length} rows in table`);
+    const resultList = document.querySelector("#result_list");
+    const allRows = document.querySelectorAll("tr");
+    const tableRows = document.querySelectorAll("#result_list tbody tr");
+    const alternativeRows = document.querySelectorAll(
+      "table tbody tr, table tr"
+    );
+
+    console.log(`Debug info:
+      - Has #result_list: ${!!resultList}
+      - Total rows on page: ${allRows.length}
+      - #result_list tbody tr: ${tableRows.length}
+      - Alternative table rows: ${alternativeRows.length}
+    `);
+
+    // Try multiple row selection strategies
+    let rows = Array.from(tableRows);
+    if (rows.length === 0) {
+      console.log("No rows in #result_list, trying alternative selectors...");
+      rows = Array.from(alternativeRows);
+    }
+
+    console.log(`Using ${rows.length} rows for processing`);
+
+    // Debug: log first few rows content
+    rows.slice(0, 3).forEach((row, index) => {
+      console.log(`Row ${index} HTML:`, row.innerHTML.substring(0, 200));
+    });
 
     return rows
-      .map((row) => {
-        const company = row.querySelector("th")?.innerText.trim();
+      .map((row, index) => {
+        const company =
+          row.querySelector("th")?.innerText.trim() ||
+          row.querySelector("td:first-child")?.innerText.trim();
+
+        // Try multiple date selectors
         const dateElement =
           row.querySelector("td.field-pub_date") ||
           row.querySelector("td[class*='pub_date']") ||
-          row.querySelector("td[class*='date']");
+          row.querySelector("td[class*='date']") ||
+          row.querySelector("td:nth-child(2)"); // Common position for date
         const date = dateElement?.innerText.trim();
 
+        // Try multiple PDF link selectors
         const pdfUrl =
-          Array.from(row.querySelectorAll("td.field-action_display a, td a"))
+          Array.from(row.querySelectorAll("a"))
             .map((a) => a.href)
             .find((href) => href && href.endsWith(".pdf")) || null;
+
+        console.log(
+          `Row ${index}: Company="${company}", Date="${date}", PDF="${pdfUrl}"`
+        );
 
         if (!company || !date || date !== today || !pdfUrl) return null;
 
