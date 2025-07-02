@@ -32,17 +32,45 @@ async function getTodayConcallLinks() {
     waitUntil: "networkidle2",
   });
 
+  // Clear any existing input and type credentials
+  await page.click("#id_username", { clickCount: 3 });
   await page.type("#id_username", process.env.GMAIL_USERNAME);
+
+  await page.click("#id_password", { clickCount: 3 });
   await page.type("#id_password", process.env.GMAIL_PASS);
+
+  // Add a small delay before clicking submit
+  await new Promise((resolve) => setTimeout(resolve, 1000));
 
   await Promise.all([
     page.click("button[type='submit']"),
-    page.waitForNavigation({ waitUntil: "networkidle2" }),
+    page.waitForNavigation({ waitUntil: "networkidle2", timeout: 30000 }),
   ]);
+
+  // Check if login was successful
+  const currentUrl = page.url();
+  console.log("URL after login attempt:", currentUrl);
+
+  if (currentUrl.includes("/register/") || currentUrl.includes("/login/")) {
+    throw new Error(
+      "Login failed - still on login/register page. Check credentials."
+    );
+  }
 
   await page.goto("https://www.screener.in/concalls/", {
     waitUntil: "networkidle2",
+    timeout: 30000,
   });
+
+  // Double-check we're on the right page
+  const finalUrl = page.url();
+  const finalTitle = await page.title();
+  console.log("Final URL:", finalUrl);
+  console.log("Final title:", finalTitle);
+
+  if (finalUrl.includes("/register/") || finalUrl.includes("/login/")) {
+    throw new Error("Unable to access concalls page - authentication required");
+  }
 
   // Debug: Take screenshot and log page content
   console.log("Current URL:", page.url());
