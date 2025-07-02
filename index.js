@@ -28,7 +28,7 @@ async function sendToWordPress(summary) {
   for (const { company, date, pdfUrl } of concalls) {
     console.log(`Processing: ${company}`);
 
-    const pdfText = await fetchPdfText(pdfUrl, browser); // ✅ browser passed
+    const pdfText = await fetchPdfText(pdfUrl, browser);
     if (!pdfText) {
       console.warn(`Skipped due to unreadable content: ${pdfUrl}`);
       continue;
