@@ -265,10 +265,10 @@ async function getTodayConcallLinks() {
         const date = dateElement?.innerText.trim();
 
         // Try multiple PDF link selectors
-        const pdfUrl =
-          Array.from(row.querySelectorAll("a"))
-            .map((a) => a.href)
-            .find((href) => href && href.endsWith(".pdf")) || null;
+        const linkAnchor = Array.from(row.querySelectorAll("a")).find((a) =>
+          a.textContent.includes("Presentation")
+        );
+        const pdfUrl = linkAnchor?.href || null;
 
         console.log(
           `Row ${index}: Company="${company}", Date="${date}", PDF="${pdfUrl}"`
