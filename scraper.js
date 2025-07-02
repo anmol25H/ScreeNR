@@ -32,28 +32,116 @@ async function getTodayConcallLinks() {
     waitUntil: "networkidle2",
   });
 
+  // Wait for login form to be ready
+  await page.waitForSelector("#id_username", { timeout: 10000 });
+  await page.waitForSelector("#id_password", { timeout: 10000 });
+
+  // Debug: Check if credentials are loaded
+  console.log("Username available:", !!process.env.GMAIL_USERNAME);
+  console.log("Password available:", !!process.env.GMAIL_PASS);
+  console.log("Username length:", process.env.GMAIL_USERNAME?.length || 0);
+
   // Clear any existing input and type credentials
   await page.click("#id_username", { clickCount: 3 });
-  await page.type("#id_username", process.env.GMAIL_USERNAME);
+  await page.type("#id_username", process.env.GMAIL_USERNAME, { delay: 50 });
 
   await page.click("#id_password", { clickCount: 3 });
-  await page.type("#id_password", process.env.GMAIL_PASS);
+  await page.type("#id_password", process.env.GMAIL_PASS, { delay: 50 });
+
+  // Debug: Check what was actually typed
+  const typedUsername = await page.$eval("#id_username", (el) => el.value);
+  const typedPasswordLength = await page.$eval(
+    "#id_password",
+    (el) => el.value.length
+  );
+  console.log("Typed username:", typedUsername);
+  console.log("Typed password length:", typedPasswordLength);
+
+  // Check for any error messages on the page before submitting
+  const existingErrors = await page.$eval(
+    "body",
+    (el) =>
+      el.textContent.includes("error") ||
+      el.textContent.includes("invalid") ||
+      el.textContent.includes("incorrect")
+  );
+  console.log("Pre-submit errors on page:", existingErrors);
 
   // Add a small delay before clicking submit
-  await new Promise((resolve) => setTimeout(resolve, 1000));
+  await new Promise((resolve) => setTimeout(resolve, 2000));
 
-  await Promise.all([
-    page.click("button[type='submit']"),
-    page.waitForNavigation({ waitUntil: "networkidle2", timeout: 30000 }),
-  ]);
+  // Try to submit and handle potential issues
+  try {
+    await Promise.all([
+      page.click("button[type='submit']"),
+      page.waitForNavigation({ waitUntil: "networkidle2", timeout: 30000 }),
+    ]);
+  } catch (navError) {
+    console.log("Navigation error during login:", navError.message);
+    // Wait a bit more in case navigation is slow
+    await new Promise((resolve) => setTimeout(resolve, 5000));
+  }
 
   // Check if login was successful
   const currentUrl = page.url();
   console.log("URL after login attempt:", currentUrl);
 
-  if (currentUrl.includes("/register/") || currentUrl.includes("/login/")) {
+  // Also check for error messages on the page
+  const hasErrors = await page.evaluate(() => {
+    const errorSelectors = [
+      ".error",
+      ".alert",
+      ".errorlist",
+      '[class*="error"]',
+      '[class*="invalid"]',
+    ];
+    return errorSelectors.some((selector) => {
+      const elements = document.querySelectorAll(selector);
+      return Array.from(elements).some(
+        (el) => el.textContent.trim().length > 0
+      );
+    });
+  });
+
+  const pageText = await page.evaluate(() =>
+    document.body.textContent.toLowerCase()
+  );
+  const hasErrorText =
+    pageText.includes("invalid") ||
+    pageText.includes("incorrect") ||
+    pageText.includes("error");
+
+  console.log("Has error elements:", hasErrors);
+  console.log("Has error text:", hasErrorText);
+
+  if (
+    currentUrl.includes("/register/") ||
+    currentUrl.includes("/login/") ||
+    hasErrors ||
+    hasErrorText
+  ) {
+    // Get any specific error messages
+    const errorMessages = await page.evaluate(() => {
+      const errorSelectors = [
+        ".error",
+        ".alert",
+        ".errorlist",
+        '[class*="error"]',
+      ];
+      const messages = [];
+      errorSelectors.forEach((selector) => {
+        document.querySelectorAll(selector).forEach((el) => {
+          if (el.textContent.trim()) messages.push(el.textContent.trim());
+        });
+      });
+      return messages;
+    });
+
+    console.log("Error messages found:", errorMessages);
     throw new Error(
-      "Login failed - still on login/register page. Check credentials."
+      `Login failed - still on login/register page. Error messages: ${
+        errorMessages.join(", ") || "None found"
+      }`
     );
   }
 

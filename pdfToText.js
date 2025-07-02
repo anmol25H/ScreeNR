@@ -35,7 +35,13 @@ async function fetchPdfText(pdfUrl) {
   try {
     const response = await axios.get(pdfUrl, {
       responseType: "stream",
-      timeout: 30000,
+      timeout: 60000,
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+        Referer: "https://www.screener.in/",
+        Accept: "application/pdf",
+      },
     });
 
     const chunks = [];
