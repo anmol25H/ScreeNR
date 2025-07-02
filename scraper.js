@@ -216,7 +216,8 @@ async function getTodayConcallLinks() {
 
   console.log("Page debug info:", JSON.stringify(pageContent, null, 2));
 
-  const today = "1 July 2025";
+  const today = dayjs().tz("Asia/Kolkata").format("D MMMM YYYY");
+
   console.log("Today (IST):", today);
 
   const data = await page.evaluate((today) => {
