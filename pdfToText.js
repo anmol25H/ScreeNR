@@ -60,36 +60,39 @@ async function fetchPdfViaAxios(pdfUrl) {
 async function fetchPdfViaPuppeteer(browser, url) {
   try {
     const page = await browser.newPage();
+
     await page.setUserAgent(
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
     );
+
+    const client = await page.target().createCDPSession();
+    await client.send("Network.enable");
+
+    let pdfBuffer = null;
+
+    client.on("Network.responseReceived", async (event) => {
+      const { response, requestId } = event;
+      if (
+        response.url.includes("AnnPdfOpen.aspx") &&
+        response.mimeType === "application/pdf"
+      ) {
+        const result = await client.send("Network.getResponseBody", {
+          requestId,
+        });
+        pdfBuffer = Buffer.from(
+          result.body,
+          result.base64Encoded ? "base64" : "utf8"
+        );
+      }
+    });
+
     await page.goto(url, { waitUntil: "networkidle2", timeout: 30000 });
 
-    // Extract the embedded PDF src from <embed> or <iframe>
-    const pdfFrameSrc = await page.evaluate(() => {
-      const embed = document.querySelector("embed[type='application/pdf']");
-      const iframe = document.querySelector("iframe");
-      return embed?.src || iframe?.src || null;
-    });
+    // Wait a little to ensure responseReceived triggers
+    await new Promise((res) => setTimeout(res, 5000));
 
-    if (!pdfFrameSrc) {
-      throw new Error("No embedded PDF source found");
-    }
-
-    console.log("📄 Found embedded PDF:", pdfFrameSrc);
-
-    // Download actual PDF using Axios
-    const response = await axios.get(pdfFrameSrc, {
-      responseType: "arraybuffer",
-      headers: {
-        Referer: url,
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-        Accept: "application/pdf",
-      },
-    });
-
-    return Buffer.from(response.data);
+    await page.close();
+    return pdfBuffer;
   } catch (err) {
     console.warn("Puppeteer PDF fallback failed:", err.message);
     return null;
