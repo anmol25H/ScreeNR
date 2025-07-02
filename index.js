@@ -1,3 +1,4 @@
+const puppeteer = require("puppeteer");
 const { getTodayConcallLinks } = require("./scraper.js");
 const { fetchPdfText } = require("./pdfToText.js");
 const { summarizeConcall } = require("./summarizer.js");
@@ -16,13 +17,18 @@ async function sendToWordPress(summary) {
 }
 
 (async () => {
+  const browser = await puppeteer.launch({
+    headless: "new",
+    args: ["--no-sandbox", "--disable-setuid-sandbox"],
+  });
+
   const concalls = await getTodayConcallLinks();
   console.log(`Found ${concalls.length} concalls for today.\n`);
 
   for (const { company, date, pdfUrl } of concalls) {
     console.log(`Processing: ${company}`);
 
-    const pdfText = await fetchPdfText(pdfUrl);
+    const pdfText = await fetchPdfText(pdfUrl, browser); // ✅ browser passed
     if (!pdfText) {
       console.warn(`Skipped due to unreadable content: ${pdfUrl}`);
       continue;
@@ -33,9 +39,12 @@ async function sendToWordPress(summary) {
       console.log("GROQ summarization failed.\n");
       continue;
     }
+
     await sendToWordPress(summary);
     console.log(`Summary for ${company}:`);
     console.log(summary);
     console.log("\n---\n");
   }
+
+  await browser.close();
 })();
