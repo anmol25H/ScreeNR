@@ -17,8 +17,15 @@ console.warn = function (msg, ...args) {
 };
 
 axiosRetry(axios, {
-  retries: 2,
-  retryDelay: () => 3000,
+  retries: 3,
+  retryDelay: (retryCount) => retryCount * 2000, // Progressive delay
+  retryCondition: (error) => {
+    return (
+      axiosRetry.isNetworkError(error) ||
+      axiosRetry.isRetryableError(error) ||
+      (error.response && [403, 429, 503].includes(error.response.status))
+    );
+  },
 });
 
 // Utility to check if PDF is gibberish or too short
@@ -39,97 +46,236 @@ async function safePdfParse(buffer, timeout = 30000) {
   ]);
 }
 
+// Enhanced headers to mimic real browser behavior
+function getBSEHeaders(referer = "https://www.bseindia.com/") {
+  return {
+    "User-Agent":
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    Accept:
+      "application/pdf,text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Accept-Encoding": "gzip, deflate, br",
+    Connection: "keep-alive",
+    "Upgrade-Insecure-Requests": "1",
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "same-origin",
+    "Sec-Fetch-User": "?1",
+    "Cache-Control": "max-age=0",
+    Referer: referer,
+    Origin: "https://www.bseindia.com",
+  };
+}
+
 async function fetchPdfViaAxios(pdfUrl) {
-  const response = await axios.get(pdfUrl, {
-    responseType: "stream",
+  // Create a session with proper cookie handling
+  const axiosInstance = axios.create({
     timeout: 60000,
-    headers: {
-      "User-Agent":
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-      Referer: "https://www.screener.in/",
-      Accept: "application/pdf",
-    },
+    maxRedirects: 5,
+    withCredentials: true,
+    validateStatus: (status) => status < 500, // Don't throw on 4xx errors
   });
 
-  const chunks = [];
-  response.data.on("data", (chunk) => chunks.push(chunk));
-  await finished(response.data);
-  return Buffer.concat(chunks);
+  try {
+    // Step 1: Visit BSE main page to establish session
+    console.log("Establishing BSE session...");
+    await axiosInstance.get("https://www.bseindia.com/", {
+      headers: getBSEHeaders(),
+    });
+
+    // Small delay to mimic human behavior
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+
+    // Step 2: Fetch the PDF with session cookies
+    console.log("Fetching PDF with session...");
+    const response = await axiosInstance.get(pdfUrl, {
+      responseType: "stream",
+      headers: getBSEHeaders("https://www.bseindia.com/corporates/ann.html"),
+    });
+
+    if (response.status === 403) {
+      throw new Error(`Access denied (403) - BSE blocking request`);
+    }
+
+    if (response.status >= 400) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+
+    const chunks = [];
+    response.data.on("data", (chunk) => chunks.push(chunk));
+    await finished(response.data);
+    return Buffer.concat(chunks);
+  } catch (error) {
+    if (error.response?.status === 403) {
+      throw new Error(`BSE Access Denied: Session/authentication required`);
+    }
+    throw error;
+  }
 }
 
 async function fetchPdfViaPuppeteer(browser, url) {
-  try {
-    const page = await browser.newPage();
+  const page = await browser.newPage();
 
+  try {
+    // Set comprehensive browser fingerprinting
     await page.setUserAgent(
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     );
 
+    // Set viewport to look more human
+    await page.setViewport({ width: 1366, height: 768 });
+
+    // Enable request interception to modify headers
+    await page.setRequestInterception(true);
+
+    page.on("request", (req) => {
+      const headers = {
+        ...req.headers(),
+        Accept:
+          "application/pdf,text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+        "Accept-Encoding": "gzip, deflate, br",
+        Referer: "https://www.bseindia.com/",
+        "Upgrade-Insecure-Requests": "1",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "same-origin",
+      };
+
+      req.continue({ headers });
+    });
+
+    console.log("Puppeteer: Visiting BSE main page first...");
+    // First visit BSE main page to establish session
+    await page.goto("https://www.bseindia.com/", {
+      waitUntil: "networkidle2",
+      timeout: 30000,
+    });
+
+    // Wait a bit to establish session
+    await page.waitForTimeout(2000);
+
+    console.log("Puppeteer: Now fetching PDF...");
+
+    // Method 1: Try direct navigation to PDF
+    try {
+      const response = await page.goto(url, {
+        waitUntil: "networkidle0",
+        timeout: 30000,
+      });
+
+      if (
+        response &&
+        response.headers()["content-type"]?.includes("application/pdf")
+      ) {
+        const buffer = await response.buffer();
+        if (buffer && buffer.length > 0) {
+          console.log(
+            `PDF downloaded via direct navigation: ${buffer.length} bytes`
+          );
+          return buffer;
+        }
+      }
+    } catch (directError) {
+      console.log("Direct navigation failed, trying CDP method...");
+    }
+
+    // Method 2: CDP Session approach (your original method)
     const client = await page.target().createCDPSession();
     await client.send("Network.enable");
 
     let pdfBuffer = null;
-
-    client.on("Network.responseReceived", async (event) => {
-      const { response, requestId } = event;
-      if (
-        response.url.includes("AnnPdfOpen.aspx") &&
-        response.mimeType === "application/pdf"
-      ) {
-        const result = await client.send("Network.getResponseBody", {
-          requestId,
-        });
-        pdfBuffer = Buffer.from(
-          result.body,
-          result.base64Encoded ? "base64" : "utf8"
-        );
-      }
+    const bufferPromise = new Promise((resolve) => {
+      client.on("Network.responseReceived", async (event) => {
+        const { response, requestId } = event;
+        if (
+          (response.url.includes("AnnPdfOpen.aspx") || response.url === url) &&
+          (response.mimeType === "application/pdf" ||
+            response.headers["content-type"]?.includes("pdf"))
+        ) {
+          try {
+            const result = await client.send("Network.getResponseBody", {
+              requestId,
+            });
+            pdfBuffer = Buffer.from(
+              result.body,
+              result.base64Encoded ? "base64" : "utf8"
+            );
+            console.log(`PDF captured via CDP: ${pdfBuffer.length} bytes`);
+            resolve(pdfBuffer);
+          } catch (cdpError) {
+            console.warn("CDP getResponseBody failed:", cdpError.message);
+            resolve(null);
+          }
+        }
+      });
     });
 
+    // Navigate and wait for potential PDF response
     await page.goto(url, { waitUntil: "networkidle2", timeout: 30000 });
 
-    // Wait a little to ensure responseReceived triggers
-    await new Promise((res) => setTimeout(res, 5000));
+    // Wait for either buffer or timeout
+    await Promise.race([
+      bufferPromise,
+      new Promise((resolve) => setTimeout(() => resolve(null), 10000)),
+    ]);
 
-    await page.close();
     return pdfBuffer;
   } catch (err) {
-    console.warn("Puppeteer PDF fallback failed:", err.message);
+    console.warn("Puppeteer PDF fetch failed:", err.message);
     return null;
+  } finally {
+    await page.close();
   }
 }
 
 async function fetchPdfText(pdfUrl, browser = null) {
+  console.log(`\nProcessing PDF: ${pdfUrl}`);
   let buffer;
 
-  // Step 1: Try Axios
+  // Step 1: Try enhanced Axios approach
   try {
+    console.log("📡 Attempting Axios with BSE session...");
     buffer = await fetchPdfViaAxios(pdfUrl);
-    const data = await safePdfParse(buffer);
-    const text = data.text?.trim() || "";
 
-    if (!isInvalidText(text)) return text;
-    console.warn(`⏭️ Skipping noisy/unusable PDF via Axios: ${pdfUrl}`);
-  } catch (err) {
-    console.warn(`Axios fetch/parse failed for ${pdfUrl}:`, err.message);
-  }
-
-  // Step 2: Fallback to Puppeteer (if browser is passed)
-  if (browser) {
-    try {
-      buffer = await fetchPdfViaPuppeteer(browser, pdfUrl);
-      if (!buffer) throw new Error("No buffer returned from Puppeteer");
-
+    if (buffer && buffer.length > 0) {
+      console.log(`Buffer received: ${buffer.length} bytes`);
       const data = await safePdfParse(buffer);
       const text = data.text?.trim() || "";
 
-      if (!isInvalidText(text)) return text;
-      console.warn(`Skipping noisy/unusable PDF via Puppeteer: ${pdfUrl}`);
+      if (!isInvalidText(text)) {
+        console.log(`Valid text extracted: ${text.length} characters`);
+        return text;
+      }
+      console.warn(`Text appears invalid/noisy`);
+    }
+  } catch (err) {
+    console.warn(`Axios method failed:`, err.message);
+  }
+
+  // Step 2: Enhanced Puppeteer fallback
+  if (browser) {
+    try {
+      console.log("Attempting Puppeteer fallback...");
+      buffer = await fetchPdfViaPuppeteer(browser, pdfUrl);
+
+      if (buffer && buffer.length > 0) {
+        console.log(`Puppeteer buffer: ${buffer.length} bytes`);
+        const data = await safePdfParse(buffer);
+        const text = data.text?.trim() || "";
+
+        if (!isInvalidText(text)) {
+          console.log(`Valid text from Puppeteer: ${text.length} characters`);
+          return text;
+        }
+        console.warn(`Puppeteer text appears invalid/noisy`);
+      }
     } catch (err) {
-      console.warn(`Puppeteer fallback failed for ${pdfUrl}:`, err.message);
+      console.warn(`Puppeteer fallback failed:`, err.message);
     }
   }
 
+  console.error(`All methods failed for: ${pdfUrl}`);
   return null;
 }
 
