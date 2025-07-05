@@ -153,7 +153,7 @@ async function fetchPdfViaPuppeteer(browser, url) {
     });
 
     // Wait a bit to establish session
-    await page.waitForTimeout(2000);
+    await new Promise((resolve) => setTimeout(resolve, 2000));
 
     console.log("Puppeteer: Now fetching PDF...");
 
