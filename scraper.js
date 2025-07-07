@@ -265,8 +265,10 @@ async function getTodayConcallLinks() {
         const date = dateElement?.innerText.trim();
 
         // Try multiple PDF link selectors
-        const linkAnchor = Array.from(row.querySelectorAll("a")).find((a) =>
-          a.textContent.includes("Presentation")
+        const linkAnchor = Array.from(row.querySelectorAll("a")).find(
+          (a) =>
+            a.textContent.includes("Presentation") ||
+            a.textContent.includes("Transcript")
         );
         const pdfUrl = linkAnchor?.href || null;
 
