@@ -264,7 +264,7 @@ async function getTodayConcallLinks() {
           row.querySelector("td:nth-child(2)"); // Common position for date
         const date = dateElement?.innerText.trim();
 
-        // Try multiple PDF link selectors
+        // Try multiple PDF link selectors.
         const linkAnchor = Array.from(row.querySelectorAll("a")).find(
           (a) =>
             a.textContent.includes("Presentation") ||
